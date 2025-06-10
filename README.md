@@ -2,4 +2,4 @@
 
 Usage: ./telnet_brute.sh <target_ip>
 
-More info on Telnet: [soon]
+More info on cleartext protocols: [soon]
