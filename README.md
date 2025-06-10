@@ -1,2 +1,5 @@
-# shell_bash_telnet_brute
-Bash shell script for Telnet default credentials testing
+# Telnet Default Credentials Testing Script
+
+Usage: ./telnet_brute.sh <target_ip>
+
+More info on Telnet: [soon]
