@@ -1,5 +1,5 @@
 #!/bin/bash
-# Telnet Credential Tester
+# Telnet Default Credentials Testing Script
 # Usage: ./telnet_brute.sh <target_ip> [port]
 
 TARGET_IP="$1"
